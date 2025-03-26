@@ -100,7 +100,7 @@ const Page = () => {
               placeholderTextColor={colors.textSecondary}
               style={[styles.inputControl, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]}
               value={form.email}
-              textContentType="emailAddress" // Aide pour l'autofill sur iOS
+    
             />
           </View>
 
@@ -116,7 +116,6 @@ const Page = () => {
               style={[styles.inputControl, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]}
               secureTextEntry={true}
               value={form.password}
-              textContentType="password" // Aide pour l'autofill sur iOS
             />
           </View>
 

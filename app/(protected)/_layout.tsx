@@ -8,9 +8,7 @@ import { StatusBar, TouchableOpacity, View } from 'react-native';
 export default function AppLayout() {
   const { theme, isDarkMode, toggleTheme } = useTheme();
   const colors = Colors[theme];
-  
-  // Déterminer si nous sommes dans un écran qui ne devrait pas avoir de tabs
-  // Cela sera géré par la structure des dossiers et le routage d'Expo
+
   
   return (
     <>
