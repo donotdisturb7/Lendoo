@@ -1,0 +1,15 @@
+app/
+├── _layout.tsx (root layout)
+├── (welcome)/ 
+│   ├── _layout.tsx
+│   └── index.tsx (welcome/landing screen)
+├── (auth)/
+│   ├── _layout.tsx
+│   ├── login.tsx
+│   └── register.tsx
+└── (main)/
+    ├── _layout.tsx (tab navigation)
+    ├── index.tsx (home screen)
+    ├── cart.tsx
+    ├── items/
+    └── profile/

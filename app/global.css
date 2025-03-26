@@ -1,0 +1,10 @@
+/* Désactiver les barres de défilement pour toute l'application */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* Désactiver les barres de défilement pour WebKit (Chrome, Safari, etc.) */
+*::-webkit-scrollbar {
+  display: none;
+}
