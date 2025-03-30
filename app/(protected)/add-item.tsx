@@ -10,13 +10,16 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useTheme } from '@/context/ThemeContext';
+import { useLocation } from '@/context/LocationContext';
 import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 
 // Type personnalisé pour l'asset d'image avec base64
 interface ImageAsset extends ImagePicker.ImagePickerAsset {
@@ -39,9 +42,11 @@ export default function AddItemScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { location, address, getAddressFromCoordinates } = useLocation();
   
   const [isLoading, setIsLoading] = useState(false);
   const [image, setImage] = useState<ImageAsset | null>(null);
+  const [useCurrentLocation, setUseCurrentLocation] = useState(false);
   const [form, setForm] = useState({
     nom: '',
     description: '',
@@ -49,8 +54,11 @@ export default function AddItemScreen() {
     caution: '',
     categorie_id: '1',
     localisation: '',
+    latitude: '',
+    longitude: '',
   });
 
+  // Effet pour demander les permissions de la galerie
   useEffect(() => {
     (async () => {
       if (Platform.OS !== 'web') {
@@ -62,19 +70,53 @@ export default function AddItemScreen() {
     })();
   }, []);
 
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-      base64: true,
-    });
+  // Effet pour mettre à jour la localisation lorsque useCurrentLocation change
+  useEffect(() => {
+    if (useCurrentLocation && location) {
+      const updateLocation = async () => {
+        try {
+          // Récupérer l'adresse à partir des coordonnées
+          const formattedAddress = address || await getAddressFromCoordinates(
+            location.coords.latitude,
+            location.coords.longitude
+          );
+          
+          // Mettre à jour le formulaire avec les coordonnées et l'adresse
+          setForm({
+            ...form,
+            localisation: formattedAddress || '',
+            latitude: location.coords.latitude.toString(),
+            longitude: location.coords.longitude.toString()
+          });
+        } catch (error) {
+          console.error('Erreur lors de la mise à jour de la localisation :', error);
+        }
+      };
+      
+      updateLocation();
+    }
+  }, [useCurrentLocation, location, address]);
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      // Conversion explicite en ImageAsset
-      const asset = result.assets[0] as ImageAsset;
-      setImage(asset);
+  const pickImage = async () => {
+    try {
+      // Modification pour utiliser moins d'options pour éviter les problèmes
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,  // Utilisation de l'énumération correcte
+        allowsEditing: true,
+        quality: 0.7,  // Qualité réduite pour faciliter l'upload
+      });
+
+      console.log('Résultat de l\'image picker:', result);
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        // Conversion explicite en ImageAsset
+        const asset = result.assets[0] as ImageAsset;
+        console.log('Image sélectionnée:', asset.uri);
+        setImage(asset);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la sélection d\'image:', error);
+      Alert.alert('Erreur', 'Impossible de sélectionner l\'image');
     }
   };
 
@@ -84,57 +126,132 @@ export default function AddItemScreen() {
   };
 
   const uploadImage = async () => {
-    if (!image || !image.base64) return null;
+    if (!image || !image.uri) {
+      Alert.alert('Erreur', 'Aucune image à uploader');
+      return null;
+    }
     
     try {
-      const fileName = `${generateUniqueId()}.jpg`;
-      const filePath = `public/${fileName}`;
-      const contentType = 'image/jpeg';
+      console.log('Début du processus d\'upload...');
+      // Approche simplifiée : Utiliser directement le fichier URI avec une extension en dur
+      const fileName = `item_${Date.now()}.jpg`;
       
-      // Convertir base64 en blob
-      const base64Response = await fetch(`data:image/jpeg;base64,${image.base64}`);
-      const blob = await base64Response.blob();
+      // Détruire le chemin complet pour ne garder que le fichier local
+      let localUri = image.uri;
       
-      const { error } = await supabase.storage
+      console.log('Chemin de l\'image:', localUri);
+      
+      // Créer un objet File pour Supabase
+      // Pour mobile, on peut utiliser fetch pour obtenir le blob
+      const response = await fetch(localUri);
+      const blob = await response.blob();
+      
+      console.log('Taille du blob:', blob.size, 'bytes');
+      
+      // Upload direct vers le bucket 'avatars' sans vérification préalable
+      console.log('Tentative d\'upload direct...');
+      const { data, error } = await supabase.storage
         .from('item-images')
-        .upload(filePath, blob, {
-          contentType,
-          upsert: true,
+        .upload(fileName, blob, {
+          contentType: 'image/jpeg',
+          cacheControl: '3600',
+          upsert: true
         });
         
       if (error) {
-        console.error('Erreur upload image:', error);
+        console.error('Erreur d\'upload Supabase:', error);
+        
+        // Si le bucket 'avatars' n'existe pas, proposer de le créer
+        if (error.message.includes('does not exist')) {
+          console.log('Le bucket n\'existe pas. Tentative avec le bucket public...');
+          
+          // Essayer avec le bucket 'public' qui existe souvent par défaut
+          const { data: publicData, error: publicError } = await supabase.storage
+            .from('public')
+            .upload(fileName, blob, {
+              contentType: 'image/jpeg',
+              cacheControl: '3600',
+              upsert: true
+            });
+            
+          if (publicError) {
+            console.error('Erreur avec le bucket public:', publicError);
+            Alert.alert(
+              'Configuration Supabase requise',
+              'Créez un bucket nommé "item-images" dans votre projet Supabase (section Storage)'
+            );
+            return null;
+          }
+          
+          // Récupérer l'URL du bucket public
+          const { data: publicUrl } = supabase.storage
+            .from('public')
+            .getPublicUrl(fileName);
+            
+          console.log('Image uploadée avec succès dans public:', publicUrl?.publicUrl);
+          return publicUrl?.publicUrl || null;
+        }
+        
+        Alert.alert('Erreur d\'upload', `Détail: ${error.message}`);
         return null;
       }
       
       // Récupérer l'URL publique de l'image
-      const { data } = supabase.storage
+      const { data: urlData } = supabase.storage
         .from('item-images')
-        .getPublicUrl(filePath);
-        
-      return data?.publicUrl || null;
+        .getPublicUrl(fileName);
+      
+      console.log('Upload réussi:', urlData?.publicUrl);
+      return urlData?.publicUrl || null;
     } catch (error) {
-      console.error('Erreur:', error);
+      console.error('Erreur générale:', error);
+      Alert.alert('Erreur', 'Erreur lors de l\'upload de l\'image. Vérifiez votre connexion internet.');
       return null;
     }
   };
 
   const handleSubmit = async () => {
     // Validation basique
-    if (!form.nom || !form.description || !form.prix || !form.caution || !image) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs et ajouter une image');
+    if (!form.nom || !form.description || !form.prix || !form.caution) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
+    
+    if (!image) {
+      Alert.alert('Attention', 'Aucune image sélectionnée. Souhaitez-vous continuer sans image ?', [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Continuer', onPress: () => processSubmit() }
+      ]);
+      return;
+    }
+    
+    await processSubmit();
+  };
+  
+  const processSubmit = async () => {
 
     setIsLoading(true);
 
     try {
-      // 1. Upload de l'image
-      const imageUrl = await uploadImage();
-      if (!imageUrl) {
-        Alert.alert('Erreur', "L'upload de l'image a échoué");
-        setIsLoading(false);
-        return;
+      // 1. Upload de l'image (si une image est sélectionnée)
+      let imageUrl = null;
+      if (image) {
+        console.log('Tentative d\'upload d\'image...');
+        imageUrl = await uploadImage();
+        console.log('Résultat URL:', imageUrl);
+        
+        if (!imageUrl && image) {
+          // L'upload a échoué mais nous avons une image
+          Alert.alert(
+            'Avertissement', 
+            "L'upload de l'image a échoué. Voulez-vous continuer sans image ?",
+            [
+              { text: 'Annuler', style: 'cancel', onPress: () => setIsLoading(false) },
+              { text: 'Continuer', onPress: () => continueSubmitWithoutImage() }
+            ]
+          );
+          return;
+        }
       }
 
       // 2. Récupérer l'ID de l'utilisateur connecté
@@ -159,6 +276,8 @@ export default function AddItemScreen() {
           caution: parseFloat(form.caution),
           disponibilite: true,
           localisation: form.localisation || 'Non spécifiée',
+          latitude: form.latitude ? parseFloat(form.latitude) : null,
+          longitude: form.longitude ? parseFloat(form.longitude) : null,
         })
         .select();
 
@@ -172,6 +291,54 @@ export default function AddItemScreen() {
       Alert.alert(
         'Succès',
         'Votre item a été ajouté avec succès',
+        [{ text: 'OK', onPress: () => router.replace('/(protected)/home') }]
+      );
+    } catch (error) {
+      console.error('Erreur:', error);
+      Alert.alert('Erreur', 'Une erreur est survenue');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const continueSubmitWithoutImage = async () => {
+    try {
+      // 2. Récupérer l'ID de l'utilisateur connecté
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        Alert.alert('Erreur', 'Utilisateur non connecté');
+        setIsLoading(false);
+        return;
+      }
+      // 3. Ajouter l'item dans la base de données sans image
+      const { data, error } = await supabase
+        .from('materiels')
+        .insert({
+          proprietaire_id: user.id,
+          categorie_id: form.categorie_id,
+          nom: form.nom,
+          description: form.description,
+          url_image: null, // Pas d'image
+          prix: parseFloat(form.prix),
+          caution: parseFloat(form.caution),
+          disponibilite: true,
+          localisation: form.localisation || 'Non spécifiée',
+          latitude: form.latitude ? parseFloat(form.latitude) : null,
+          longitude: form.longitude ? parseFloat(form.longitude) : null,
+        })
+        .select();
+
+      if (error) {
+        console.error('Erreur ajout item:', error);
+        Alert.alert('Erreur', "L'ajout de l'item a échoué");
+        setIsLoading(false);
+        return;
+      }
+
+      Alert.alert(
+        'Succès',
+        'Votre item a été ajouté avec succès (sans image)',
         [{ text: 'OK', onPress: () => router.replace('/(protected)/home') }]
       );
     } catch (error) {
@@ -305,7 +472,19 @@ export default function AddItemScreen() {
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.text }]}>Localisation</Text>
+          <View style={styles.locationHeader}>
+            <Text style={[styles.label, { color: colors.text }]}>Localisation</Text>
+            <View style={styles.switchContainer}>
+              <Text style={{ color: colors.textSecondary, fontSize: 14, marginRight: 8 }}>Utiliser ma position</Text>
+              <Switch
+                value={useCurrentLocation}
+                onValueChange={setUseCurrentLocation}
+                trackColor={{ false: '#767577', true: colors.primary }}
+                thumbColor={useCurrentLocation ? '#f4f3f4' : '#f4f3f4'}
+              />
+            </View>
+          </View>
+          
           <TextInput
             style={[styles.input, { 
               backgroundColor: theme === 'dark' ? '#333' : '#fff',
@@ -316,7 +495,17 @@ export default function AddItemScreen() {
             placeholder="Ex: Paris 11e"
             value={form.localisation}
             onChangeText={(text) => setForm({ ...form, localisation: text })}
+            editable={!useCurrentLocation} // Désactiver si utilisant la position actuelle
           />
+          
+          {useCurrentLocation && (
+            <View style={styles.locationInfo}>
+              <Ionicons name="location" size={16} color={colors.primary} style={{ marginRight: 5 }} />
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                Position GPS: {form.latitude ? form.latitude.substring(0, 6) : '?'}, {form.longitude ? form.longitude.substring(0, 6) : '?'}
+              </Text>
+            </View>
+          )}
         </View>
 
         <TouchableOpacity
@@ -422,5 +611,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  locationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  locationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    paddingHorizontal: 4,
   },
 });

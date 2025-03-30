@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
@@ -10,18 +11,18 @@ import SafeScreenView from '@/components/SafeScreenView';
 interface CartItem {
   id: string;
   date_creation: string;
+  date_modification: string;
   materiel_id: string;
   emprunteur_id: string;
   date_debut: string;
   date_fin: string;
+  date_retour?: string;
   statut: string;
   frais_location: number;
   caution_payee: number;
+  caution_rendue?: boolean;
   notes?: string;
   proprietaire_id: string;
-  date_demande: string;
-  date_livraison?: string;
-  transporteur_id?: string;
   materiel: {
     id: string;
     nom: string;
@@ -41,9 +42,16 @@ export default function CartScreen() {
   const [loading, setLoading] = useState(true);
   const [totalPrice, setTotalPrice] = useState(0);
   
-  useEffect(() => {
-    fetchCartItems();
-  }, []);
+  // Utiliser useFocusEffect pour recharger les données chaque fois que l'écran reçoit le focus (changement d'onglet)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('CartScreen focused - refreshing data');
+      fetchCartItems();
+      return () => {
+        // Fonction de nettoyage (optionnelle) exécutée quand l'écran perd le focus
+      };
+    }, [])
+  );
   
   async function fetchCartItems() {
     setLoading(true);
@@ -59,18 +67,18 @@ export default function CartScreen() {
           .select(`
             id,
             date_creation,
+            date_modification,
             materiel_id,
             emprunteur_id,
             date_debut,
             date_fin,
+            date_retour,
             statut,
             frais_location,
             caution_payee,
+            caution_rendue,
             notes,
             proprietaire_id,
-            date_demande,
-            date_livraison,
-            transporteur_id,
             materiel:materiels(id, nom, description, prix, caution, url_image, localisation)
           `)
           .eq('emprunteur_id', user.id)
@@ -292,7 +300,10 @@ export default function CartScreen() {
   };
   
   return (
-    <SafeScreenView>
+    <SafeScreenView
+      reduceTopPadding={true}
+      contentStyle={styles.screenContent}
+    >
       <Text style={[styles.title, { color: colors.text }]}>Mon Panier</Text>
       
       {loading ? (
@@ -340,6 +351,9 @@ export default function CartScreen() {
 }
 
 const styles = StyleSheet.create({
+  screenContent: {
+    paddingHorizontal: 12,
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',

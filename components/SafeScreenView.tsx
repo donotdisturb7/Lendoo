@@ -6,15 +6,32 @@ import Colors from '@/constants/Colors';
 interface SafeScreenViewProps {
   children: ReactNode;
   style?: any;
+  contentStyle?: any;
+  noPadding?: boolean;
+  reduceTopPadding?: boolean;
 }
 
 /**
  * Composant qui fournit une mise en page sécurisée pour toutes les pages
  * en évitant les problèmes d'affichage sur les téléphones (notch, barre d'état, etc.)
  */
-export default function SafeScreenView({ children, style }: SafeScreenViewProps) {
+export default function SafeScreenView({ 
+  children, 
+  style, 
+  contentStyle, 
+  noPadding = false,
+  reduceTopPadding = false 
+}: SafeScreenViewProps) {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  
+  // Calcul dynamique du padding en fonction des options
+  const containerPadding = {
+    padding: noPadding ? 0 : 20,
+    paddingTop: noPadding ? 0 : 
+               reduceTopPadding ? (Platform.OS === 'android' ? 24 : 16) : 
+               (Platform.OS === 'android' ? 50 : 20)
+  };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -22,7 +39,15 @@ export default function SafeScreenView({ children, style }: SafeScreenViewProps)
         barStyle={theme === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={colors.background}
       />
-      <View style={[styles.container, style, { backgroundColor: colors.background }]}>
+      <View 
+        style={[
+          styles.container, 
+          containerPadding,
+          style, 
+          { backgroundColor: colors.background },
+          contentStyle
+        ]}
+      >
         {children}
       </View>
     </SafeAreaView>
@@ -35,7 +60,5 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    padding: 20,
-    paddingTop: Platform.OS === 'android' ? 50 : 20, // Plus de padding sur Android
   },
 });

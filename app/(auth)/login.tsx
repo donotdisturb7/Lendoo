@@ -15,15 +15,17 @@ import {
   SafeAreaView,
   Image,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
-import { supabase } from '@/lib/supabase';
 import React from 'react';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
 
 const Page = () => {
   const router = useRouter();
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { signIn, loading } = useAuth();
   
   const [form, setForm] = useState({
     email: '',
@@ -44,26 +46,21 @@ const Page = () => {
   }, [form.password, form.email]);
   
   async function handleAuth() {
+    if (loading) return;
+    
     if (!form.email || !form.password) {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs');
       return;
     }
     
-    await signIn(form.email, form.password);
-  }
-
-  async function signIn(email: string, password: string) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: password,
-    });
-
-    if (error) {
-      Alert.alert('Error', error.message);
+    const { success, message } = await signIn(form.email, form.password);
+    
+    if (!success) {
+      Alert.alert('Erreur de connexion', message);
       return;
     }
-
-    // Navigate to home page
+    
+    // La connexion a réussi, rediriger l'utilisateur
     router.replace('/(protected)/home');
   }
 
@@ -75,12 +72,6 @@ const Page = () => {
       />
       <View style={styles.container}>
         <View style={styles.header}>
-          {/* <Image
-            alt="App Logo"
-            resizeMode="contain"
-            style={styles.headerImg}
-            source={require('@/assets/images/icon.png')} 
-          /> */}
 
           <Text style={[styles.title, { color: colors.text }]}>Bienvenue</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Connectez-vous pour continuer</Text>
@@ -120,9 +111,16 @@ const Page = () => {
           </View>
 
           <View style={styles.formAction}>
-            <TouchableOpacity onPress={handleAuth}>
-              <View style={[styles.btn, { backgroundColor: colors.buttonBackground, borderColor: colors.buttonBackground }]}>
-                <Text style={[styles.btnText, { color: colors.buttonText }]}>Connexion</Text>
+            <TouchableOpacity onPress={handleAuth} disabled={loading}>
+              <View style={[styles.btn, { 
+                backgroundColor: loading ? colors.textSecondary : colors.buttonBackground, 
+                borderColor: loading ? colors.textSecondary : colors.buttonBackground 
+              }]}>
+                {loading ? (
+                  <ActivityIndicator size="small" color={colors.buttonText} />
+                ) : (
+                  <Text style={[styles.btnText, { color: colors.buttonText }]}>Connexion</Text>
+                )}
               </View>
             </TouchableOpacity>
           </View>

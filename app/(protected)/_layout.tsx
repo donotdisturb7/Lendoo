@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import React from 'react';
 import { useTheme } from '@/context/ThemeContext';
+import { LocationProvider } from '@/context/LocationContext';
 import { StatusBar, TouchableOpacity, View } from 'react-native';
 
 export default function AppLayout() {
@@ -16,7 +17,8 @@ export default function AppLayout() {
         barStyle={colors.statusBarStyle === 'dark' ? 'dark-content' : 'light-content'}
         backgroundColor={colors.background}
       />
-      <Tabs 
+      <LocationProvider>
+        <Tabs 
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.tabIconDefault,
@@ -74,7 +76,8 @@ export default function AppLayout() {
         }} 
       />
  
-    </Tabs>
+      </Tabs>
+      </LocationProvider>
     </>
   );
 }

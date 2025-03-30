@@ -1,7 +1,5 @@
 import Colors from '@/constants/Colors';
-import { defaultStyles } from '@/constants/Styles';
-import { Ionicons } from '@expo/vector-icons';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   View,
@@ -9,54 +7,52 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
   SafeAreaView,
-  Image,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
-import { supabase } from '@/lib/supabase';
 import React from 'react';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
 
 const Register = () => {
   const router = useRouter();
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { signUp, loading } = useAuth();
   const [form, setForm] = useState({
     email: '',
     password: '',
-    confirmPassword: '', 
+    confirmPassword: '',
+    nom_complet: '', 
   });
   
   async function handleAuth() {
-    if (!form.email || !form.password || !form.confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
+    if (loading) return;
+    
+    if (!form.email || !form.password || !form.confirmPassword || !form.nom_complet) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
     
     if (form.password !== form.confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      Alert.alert('Erreur', 'Les mots de passe ne correspondent pas');
       return;
     }
     
-    await signUp(form.email, form.password);
-  }
-
-  async function signUp(email : string, password : string) {
-    const { data, error } = await supabase.auth.signUp({
-      email: email,
-      password: password,
-    });
-
-    if (error) {
-      Alert.alert('Error', error.message);
+    const { success, message } = await signUp(form.email, form.password, form.nom_complet);
+    
+    if (!success) {
+      Alert.alert('Erreur d\'inscription', message);
       return;
     }
-
-    Alert.alert('Success', 'Account created successfully!');
-    // Navigate to home page
+    
+    // Si l'inscription est réussie
+    Alert.alert(
+      'Compte créé avec succès', 
+      'Bienvenue chez Lendoo! Vous pouvez maintenant utiliser l\'application.'
+    );
     router.replace('/(protected)/home');
   }
 
@@ -65,18 +61,30 @@ const Register = () => {
       <StatusBar barStyle={theme === 'dark' ? 'light-content' : 'dark-content'} />
       <View style={styles.container}>
         <View style={styles.header}>
-          {/* <Image
-            alt="App Logo"
-            resizeMode="contain"
-            style={styles.headerImg}
-            source={require('@/assets/images/icon.png')} 
-          /> */}
+  
 
           <Text style={[styles.title, { color: colors.text }]}>Créer un compte</Text>
           <Text style={[styles.subtitle, { color: theme === 'dark' ? '#aaa' : '#929292' }]}>Inscrivez vous pour continuer</Text>
         </View>
 
         <View style={styles.form}>
+          <View style={styles.input}>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Nom complet</Text>
+            <TextInput
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+              onChangeText={nom_complet => setForm({ ...form, nom_complet })}
+              placeholder="Jean Dupont"
+              placeholderTextColor={theme === 'dark' ? '#aaa' : '#6b7280'}
+              style={[styles.inputControl, { 
+                backgroundColor: theme === 'dark' ? '#333' : '#fff',
+                color: colors.text,
+                borderColor: theme === 'dark' ? '#555' : '#C9D3DB'
+              }]}
+              value={form.nom_complet}
+            />
+          </View>
+
           <View style={styles.input}>
             <Text style={[styles.inputLabel, { color: colors.text }]}>Email</Text>
             <TextInput
@@ -133,9 +141,16 @@ const Register = () => {
           </View>
 
           <View style={styles.formAction}>
-            <TouchableOpacity onPress={handleAuth}>
-              <View style={[styles.btn, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-                <Text style={styles.btnText}>Inscription</Text>
+            <TouchableOpacity onPress={handleAuth} disabled={loading}>
+              <View style={[styles.btn, { 
+                backgroundColor: loading ? colors.textSecondary : colors.primary, 
+                borderColor: loading ? colors.textSecondary : colors.primary 
+              }]}>
+                {loading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.btnText}>Inscription</Text>
+                )}
               </View>
             </TouchableOpacity>
           </View>
@@ -146,23 +161,7 @@ const Register = () => {
             <View style={[styles.separator, { backgroundColor: theme === 'dark' ? '#555' : '#929292' }]} />
           </View>
           
-          <View style={styles.socialButtons}>
-            <TouchableOpacity style={[styles.socialBtn, { 
-              backgroundColor: theme === 'dark' ? '#333' : '#fff',
-              borderColor: theme === 'dark' ? '#555' : '#C9D3DB'
-            }]}>
-              <Ionicons name="logo-google" size={20} color={colors.text} />
-              <Text style={[styles.socialBtnText, { color: colors.text }]}>Google</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={[styles.socialBtn, { 
-              backgroundColor: theme === 'dark' ? '#333' : '#fff',
-              borderColor: theme === 'dark' ? '#555' : '#C9D3DB'
-            }]}>
-              <Ionicons name="logo-apple" size={20} color={colors.text} />
-              <Text style={[styles.socialBtnText, { color: colors.text }]}>Apple</Text>
-            </TouchableOpacity>
-          </View>
+
         </View>
       </View>
 

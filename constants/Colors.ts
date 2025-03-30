@@ -18,11 +18,13 @@ export default {
     buttonText: '#FFFFFF',
     inputBackground: '#FFFFFF',
     statusBarStyle: 'dark',
+    error: '#FF3B30',
+    cardHighlight: '#A7E8BD',
   },
   dark: {
     primary: '#3DA77A', // Lighter Sea Green for better visibility in dark mode
     primaryMuted: '#2E8B57', // Sea Green
-    background: '#121212',
+    background: '#000',
     card: '#1E1E1E',
     text: '#FFFFFF',
     textSecondary: '#A0A0A0',
@@ -35,5 +37,7 @@ export default {
     buttonText: '#FFFFFF',
     inputBackground: '#2C2C2C',
     statusBarStyle: 'light',
+    error: '#FF3B30',
+    cardHighlight: '#A7E8BD',
   },
 };

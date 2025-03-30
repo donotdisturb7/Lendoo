@@ -25,17 +25,16 @@ export default function useHomeData(): HomeData {
     setError(null);
     
     try {
-      // Récupérer les informations de l'utilisateur
+  
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setError('Utilisateur non connecté');
         return;
       }
       
-      // Stocker l'ID de l'utilisateur
+     
       setCurrentUserId(user.id);
 
-      // Récupérer le nom d'utilisateur depuis la table utilisateurs
       const { data: userData, error: userError } = await supabase
         .from('utilisateurs')
         .select('*')

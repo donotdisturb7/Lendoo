@@ -6,7 +6,6 @@ import { useAssets } from 'expo-asset';
 import { ResizeMode, Video } from 'expo-av';
 import { Link, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import LocAppLogo from '@/components/LocAppLogo';
 import { useTheme } from '@/context/ThemeContext';
 
 const IntroScreen = () => {

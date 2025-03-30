@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -25,9 +26,15 @@ export default function ProfileScreen() {
     createdAt: '',
   });
 
-  useEffect(() => {
-    fetchUserProfile();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      console.log('ProfileScreen focused - refreshing data');
+      fetchUserProfile();
+      return () => {
+       
+      };
+    }, [])
+  );
 
   async function fetchUserProfile() {
     try {
