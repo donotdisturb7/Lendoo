@@ -8,6 +8,10 @@ import {
   Alert,
   Image,
   ScrollView,
+  TextInput,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -25,6 +29,18 @@ export default function ProfileScreen() {
     name: 'Utilisateur',
     createdAt: '',
   });
+  
+  // État pour contrôler le mode d'édition
+  const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(false);
+  
+  // État pour les données du profil en mode édition
+  const [profileData, setProfileData] = useState({
+    fullName: '',
+    biography: '',
+    location: '',
+    phoneNumber: '',
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -38,6 +54,7 @@ export default function ProfileScreen() {
 
   async function fetchUserProfile() {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
@@ -46,9 +63,41 @@ export default function ProfileScreen() {
           name: user.email?.split('@')[0] || 'Utilisateur',
           createdAt: new Date(user.created_at).toLocaleDateString(),
         });
+        
+        // Récupérer les données de l'utilisateur pour le mode édition
+        const { data: userData, error: userError } = await supabase
+          .from('utilisateurs')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+          
+        if (userError && userError.code !== 'PGRST116') {
+          console.error('Erreur récupération utilisateur:', userError);
+        }
+        
+        // Récupérer les données du profil
+        const { data: profileInfo, error: profileError } = await supabase
+          .from('profils')
+          .select('*')
+          .eq('utilisateur_id', user.id)
+          .single();
+          
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.error('Erreur récupération profil:', profileError);
+        }
+        
+        // Mettre à jour l'état du profil
+        setProfileData({
+          fullName: userData?.nom_complet || user.email?.split('@')[0] || '',
+          biography: profileInfo?.biographie || '',
+          location: profileInfo?.localisation || '',
+          phoneNumber: profileInfo?.telephone || '',
+        });
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -77,7 +126,208 @@ export default function ProfileScreen() {
       ]
     );
   }
+  
+  async function handleSaveProfile() {
+    try {
+      setLoading(true);
+      
+      // Récupérer l'utilisateur actuel
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        Alert.alert('Erreur', 'Utilisateur non connecté');
+        return;
+      }
+      
+      // Mettre à jour la table utilisateurs
+      const { error: userError } = await supabase
+        .from('utilisateurs')
+        .update({
+          nom_complet: profileData.fullName,
+          date_modification: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+        
+      if (userError) {
+        throw userError;
+      }
+      
+      // Vérifier si le profil existe déjà
+      const { data: existingProfile, error: profileCheckError } = await supabase
+        .from('profils')
+        .select('id')
+        .eq('utilisateur_id', user.id)
+        .single();
+      
+      if (profileCheckError && profileCheckError.code !== 'PGRST116') {
+        console.error('Erreur vérification profil:', profileCheckError);
+      }
+      
+      let profileUpdateError;
+      
+      if (existingProfile) {
+        // Mettre à jour le profil existant
+        const { error } = await supabase
+          .from('profils')
+          .update({
+            biographie: profileData.biography,
+            localisation: profileData.location,
+            telephone: profileData.phoneNumber,
+            date_modification: new Date().toISOString(),
+          })
+          .eq('id', existingProfile.id);
+          
+        profileUpdateError = error;
+      } else {
+        // Créer un nouveau profil
+        const { error } = await supabase
+          .from('profils')
+          .insert({
+            utilisateur_id: user.id,
+            biographie: profileData.biography,
+            localisation: profileData.location,
+            telephone: profileData.phoneNumber,
+            date_creation: new Date().toISOString(),
+            date_modification: new Date().toISOString(),
+          });
+          
+        profileUpdateError = error;
+      }
+      
+      if (profileUpdateError) {
+        throw profileUpdateError;
+      }
+      
+      // Mettre à jour l'affichage du nom
+      setUserInfo(prev => ({
+        ...prev,
+        name: profileData.fullName || prev.name,
+      }));
+      
+      Alert.alert('Succès', 'Profil mis à jour avec succès');
+      setIsEditing(false);
+      
+    } catch (error) {
+      console.error('Erreur mise à jour profil:', error);
+      Alert.alert('Erreur', 'Impossible de mettre à jour le profil');
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  // Gérer les changements dans les champs du formulaire
+  const handleChange = (field: string, value: string) => {
+    setProfileData(prev => ({ ...prev, [field]: value }));
+  };
 
+  // Afficher le formulaire d'édition
+  if (isEditing) {
+    return (
+      <SafeScreenView>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={styles.header}>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>Modifier le profil</Text>
+            </View>
+            
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+              </View>
+            ) : (
+              <View style={styles.formContainer}>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Nom complet</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border 
+                    }]}
+                    placeholder="Votre nom complet"
+                    placeholderTextColor={colors.textSecondary}
+                    value={profileData.fullName}
+                    onChangeText={(text) => handleChange('fullName', text)}
+                  />
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Biographie</Text>
+                  <TextInput
+                    style={[styles.textArea, { 
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border 
+                    }]}
+                    placeholder="Parlez-nous de vous"
+                    placeholderTextColor={colors.textSecondary}
+                    value={profileData.biography}
+                    onChangeText={(text) => handleChange('biography', text)}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Localisation</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border 
+                    }]}
+                    placeholder="Votre ville"
+                    placeholderTextColor={colors.textSecondary}
+                    value={profileData.location}
+                    onChangeText={(text) => handleChange('location', text)}
+                  />
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Numéro de téléphone</Text>
+                  <TextInput
+                    style={[styles.input, { 
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border 
+                    }]}
+                    placeholder="Votre numéro de téléphone"
+                    placeholderTextColor={colors.textSecondary}
+                    value={profileData.phoneNumber}
+                    onChangeText={(text) => handleChange('phoneNumber', text)}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+                
+                <View style={styles.actions}>
+                  <TouchableOpacity 
+                    style={[styles.buttonCancel, { borderColor: colors.border }]}
+                    onPress={() => setIsEditing(false)}
+                  >
+                    <Text style={[styles.buttonCancelText, { color: colors.text }]}>Annuler</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.buttonSave, { backgroundColor: colors.primary }]}
+                    onPress={handleSaveProfile}
+                    disabled={loading}
+                  >
+                    <Text style={styles.buttonSaveText}>Enregistrer</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeScreenView>
+    );
+  }
+
+  // Affichage normal du profil
   return (
     <SafeScreenView>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -95,7 +345,10 @@ export default function ProfileScreen() {
         <View style={[styles.section, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Paramètres du compte</Text>
           
-          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity 
+            style={[styles.menuItem, { borderBottomColor: colors.border }]}
+            onPress={() => setIsEditing(true)}
+          >
             <Ionicons name="person-outline" size={24} color={colors.text} />
             <Text style={[styles.menuItemText, { color: colors.text }]}>Modifier le profil</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
@@ -162,6 +415,10 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 30,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   avatarContainer: {
     marginBottom: 15,
@@ -231,5 +488,70 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  // Styles pour le formulaire d'édition
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  formContainer: {
+    paddingHorizontal: 15,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  input: {
+    height: 50,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    fontSize: 16,
+  },
+  textArea: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    fontSize: 16,
+    minHeight: 100,
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 30,
+    marginBottom: 50,
+  },
+  buttonCancel: {
+    flex: 1,
+    height: 50,
+    borderWidth: 1,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  buttonCancelText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  buttonSave: {
+    flex: 1,
+    height: 50,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  buttonSaveText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
   },
 });
