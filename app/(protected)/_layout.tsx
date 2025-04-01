@@ -75,6 +75,13 @@ export default function AppLayout() {
           href: null, // Ceci empêche l'écran d'apparaître dans la barre de navigation
         }} 
       />
+      
+      <Tabs.Screen 
+        name="settings" 
+        options={{
+          href: null, // Ne pas afficher dans la barre de navigation
+        }} 
+      />
  
       </Tabs>
       </LocationProvider>
