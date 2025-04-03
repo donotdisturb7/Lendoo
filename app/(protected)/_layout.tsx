@@ -23,7 +23,7 @@ export default function AppLayout() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.tabIconDefault,
           tabBarStyle: {
-            backgroundColor: colors.card,
+            backgroundColor: colors.navBarBackground,
             borderTopColor: colors.border,
             paddingTop: 5,
           },

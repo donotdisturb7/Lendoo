@@ -365,14 +365,21 @@ export default function AddItemScreen() {
         showsVerticalScrollIndicator={false}
       >
         <TouchableOpacity 
-          style={[styles.imageContainer, { borderColor: colors.border }]} 
+          style={[styles.imageContainer, { borderColor: colors.primary }]} 
           onPress={pickImage}
         >
           {image && image.uri ? (
-            <Image source={{ uri: image.uri }} style={styles.image} />
+            <>
+              <Image source={{ uri: image.uri }} style={styles.image} />
+              <View style={styles.imageOverlay}>
+                <Ionicons name="camera" size={24} color="#fff" />
+              </View>
+            </>
           ) : (
             <View style={styles.imagePlaceholder}>
-              <Ionicons name="camera" size={40} color={colors.primary} />
+              <View style={[styles.iconCircle, { backgroundColor: colors.primary }]}>
+                <Ionicons name="camera" size={30} color="#fff" />
+              </View>
               <Text style={[styles.imagePlaceholderText, { color: colors.textSecondary }]}>
                 Ajouter une photo
               </Text>
@@ -380,132 +387,167 @@ export default function AddItemScreen() {
           )}
         </TouchableOpacity>
 
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.text }]}>Nom de l'objet</Text>
-          <TextInput
-            style={[styles.input, { 
-              backgroundColor: theme === 'dark' ? '#333' : '#fff',
-              color: colors.text,
-              borderColor: theme === 'dark' ? '#555' : '#ddd'
-            }]}
-            placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
-            placeholder="Ex: Perceuse Bosch"
-            value={form.nom}
-            onChangeText={(text) => setForm({ ...form, nom: text })}
-          />
-        </View>
-
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.text }]}>Catégorie</Text>
-          <View style={[styles.pickerContainer, { 
-            backgroundColor: theme === 'dark' ? '#333' : '#fff',
-            borderColor: theme === 'dark' ? '#555' : '#ddd'
-          }]}>
-            <Picker
-              selectedValue={form.categorie_id}
-              onValueChange={(itemValue: string) => setForm({ ...form, categorie_id: itemValue })}
-              style={{ color: colors.text }}
-              dropdownIconColor={colors.text}
-            >
-              {CATEGORIES.map((category) => (
-                <Picker.Item 
-                  key={category.id} 
-                  label={category.name} 
-                  value={category.id} 
-                  color={theme === 'dark' ? '#fff' : '#000'}
+        <View style={styles.card}>
+          <View style={styles.formSection}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Informations générales</Text>
+            
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>Nom de l'objet</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="pricetag-outline" size={20} color={colors.primary} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.input, { 
+                    backgroundColor: theme === 'dark' ? '#333' : '#f8f8f8',
+                    color: colors.text,
+                  }]}
+                  placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
+                  placeholder="Ex: Perceuse Bosch"
+                  value={form.nom}
+                  onChangeText={(text) => setForm({ ...form, nom: text })}
                 />
-              ))}
-            </Picker>
-          </View>
-        </View>
+              </View>
+            </View>
 
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.text }]}>Description</Text>
-          <TextInput
-            style={[styles.input, styles.textArea, { 
-              backgroundColor: theme === 'dark' ? '#333' : '#fff',
-              color: colors.text,
-              borderColor: theme === 'dark' ? '#555' : '#ddd'
-            }]}
-            placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
-            placeholder="Décrivez votre objet (état, caractéristiques, etc.)"
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-            value={form.description}
-            onChangeText={(text) => setForm({ ...form, description: text })}
-          />
-        </View>
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>Catégorie</Text>
+              <View style={styles.categoriesContainer}>
+                {CATEGORIES.map((category) => (
+                  <TouchableOpacity
+                    key={category.id}
+                    style={[
+                      styles.categoryButton,
+                      form.categorie_id === category.id ? 
+                        { backgroundColor: colors.primary, borderColor: colors.primary } : 
+                        { backgroundColor: theme === 'dark' ? '#333' : '#f8f8f8', borderColor: theme === 'dark' ? '#555' : '#ddd' }
+                    ]}
+                    onPress={() => setForm({ ...form, categorie_id: category.id })}
+                  >
+                    <View style={styles.categoryIconContainer}>
+                      <Ionicons 
+                        name={category.icon as any} 
+                        size={24} 
+                        color={form.categorie_id === category.id ? '#fff' : colors.primary} 
+                      />
+                    </View>
+                    <Text 
+                      style={[
+                        styles.categoryText, 
+                        { color: form.categorie_id === category.id ? '#fff' : colors.text }
+                      ]}
+                    >
+                      {category.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
 
-        <View style={styles.row}>
-          <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
-            <Text style={[styles.label, { color: colors.text }]}>Prix (€/jour)</Text>
-            <TextInput
-              style={[styles.input, { 
-                backgroundColor: theme === 'dark' ? '#333' : '#fff',
-                color: colors.text,
-                borderColor: theme === 'dark' ? '#555' : '#ddd'
-              }]}
-              placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
-              placeholder="Ex: 15"
-              keyboardType="numeric"
-              value={form.prix}
-              onChangeText={(text) => setForm({ ...form, prix: text })}
-            />
-          </View>
-
-          <View style={[styles.formGroup, { flex: 1, marginLeft: 10 }]}>
-            <Text style={[styles.label, { color: colors.text }]}>Caution (€)</Text>
-            <TextInput
-              style={[styles.input, { 
-                backgroundColor: theme === 'dark' ? '#333' : '#fff',
-                color: colors.text,
-                borderColor: theme === 'dark' ? '#555' : '#ddd'
-              }]}
-              placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
-              placeholder="Ex: 100"
-              keyboardType="numeric"
-              value={form.caution}
-              onChangeText={(text) => setForm({ ...form, caution: text })}
-            />
-          </View>
-        </View>
-
-        <View style={styles.formGroup}>
-          <View style={styles.locationHeader}>
-            <Text style={[styles.label, { color: colors.text }]}>Localisation</Text>
-            <View style={styles.switchContainer}>
-              <Text style={{ color: colors.textSecondary, fontSize: 14, marginRight: 8 }}>Utiliser ma position</Text>
-              <Switch
-                value={useCurrentLocation}
-                onValueChange={setUseCurrentLocation}
-                trackColor={{ false: '#767577', true: colors.primary }}
-                thumbColor={useCurrentLocation ? '#f4f3f4' : '#f4f3f4'}
-              />
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>Description</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="document-text-outline" size={20} color={colors.primary} style={[styles.inputIcon, { alignSelf: 'flex-start', marginTop: 12 }]} />
+                <TextInput
+                  style={[styles.input, styles.textArea, { 
+                    backgroundColor: theme === 'dark' ? '#333' : '#f8f8f8',
+                    color: colors.text,
+                  }]}
+                  placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
+                  placeholder="Décrivez votre objet (état, caractéristiques, etc.)"
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                  value={form.description}
+                  onChangeText={(text) => setForm({ ...form, description: text })}
+                />
+              </View>
             </View>
           </View>
           
-          <TextInput
-            style={[styles.input, { 
-              backgroundColor: theme === 'dark' ? '#333' : '#fff',
-              color: colors.text,
-              borderColor: theme === 'dark' ? '#555' : '#ddd'
-            }]}
-            placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
-            placeholder="Ex: Paris 11e"
-            value={form.localisation}
-            onChangeText={(text) => setForm({ ...form, localisation: text })}
-            editable={!useCurrentLocation} // Désactiver si utilisant la position actuelle
-          />
-          
-          {useCurrentLocation && (
-            <View style={styles.locationInfo}>
-              <Ionicons name="location" size={16} color={colors.primary} style={{ marginRight: 5 }} />
-              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                Position GPS: {form.latitude ? form.latitude.substring(0, 6) : '?'}, {form.longitude ? form.longitude.substring(0, 6) : '?'}
-              </Text>
+          <View style={styles.formSection}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Tarification</Text>
+            
+            <View style={styles.row}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
+                <Text style={[styles.label, { color: colors.text }]}>Prix (€/jour)</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="cash-outline" size={20} color={colors.primary} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: theme === 'dark' ? '#333' : '#f8f8f8',
+                      color: colors.text,
+                    }]}
+                    placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
+                    placeholder="Ex: 15"
+                    keyboardType="numeric"
+                    value={form.prix}
+                    onChangeText={(text) => setForm({ ...form, prix: text })}
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.formGroup, { flex: 1, marginLeft: 10 }]}>
+                <Text style={[styles.label, { color: colors.text }]}>Caution (€)</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="wallet-outline" size={20} color={colors.primary} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, { 
+                      backgroundColor: theme === 'dark' ? '#333' : '#f8f8f8',
+                      color: colors.text,
+                    }]}
+                    placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
+                    placeholder="Ex: 100"
+                    keyboardType="numeric"
+                    value={form.caution}
+                    onChangeText={(text) => setForm({ ...form, caution: text })}
+                  />
+                </View>
+              </View>
             </View>
-          )}
+          </View>
+          
+          <View style={styles.formSection}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Localisation</Text>
+            
+            <View style={styles.formGroup}>
+              <View style={styles.locationHeader}>
+                <Text style={[styles.label, { color: colors.text }]}>Adresse</Text>
+                <View style={styles.switchContainer}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 14, marginRight: 8 }}>Ma position</Text>
+                  <Switch
+                    value={useCurrentLocation}
+                    onValueChange={setUseCurrentLocation}
+                    trackColor={{ false: '#767577', true: colors.primary }}
+                    thumbColor={useCurrentLocation ? '#f4f3f4' : '#f4f3f4'}
+                    ios_backgroundColor="#3e3e3e"
+                  />
+                </View>
+              </View>
+              
+              <View style={styles.inputWrapper}>
+                <Ionicons name="location-outline" size={20} color={colors.primary} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.input, { 
+                    backgroundColor: theme === 'dark' ? '#333' : '#f8f8f8',
+                    color: colors.text,
+                  }]}
+                  placeholderTextColor={theme === 'dark' ? '#aaa' : '#999'}
+                  placeholder="Ex: Paris 11e"
+                  value={form.localisation}
+                  onChangeText={(text) => setForm({ ...form, localisation: text })}
+                  editable={!useCurrentLocation}
+                />
+              </View>
+              
+              {useCurrentLocation && (
+                <View style={styles.locationInfo}>
+                  <Ionicons name="navigate" size={16} color={colors.primary} style={{ marginRight: 5 }} />
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                    Position GPS: {form.latitude ? form.latitude.substring(0, 6) : '?'}, {form.longitude ? form.longitude.substring(0, 6) : '?'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -514,7 +556,7 @@ export default function AddItemScreen() {
           disabled={isLoading}
         >
           {isLoading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#fff" size="small" />
           ) : (
             <>
               <Ionicons name="add-circle" size={20} color="#fff" />
@@ -533,42 +575,82 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   backButton: {
     padding: 8,
+    borderRadius: 20,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
   },
   container: {
     flex: 1,
     padding: 16,
   },
+  card: {
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  formSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
   imageContainer: {
     width: '100%',
-    height: 200,
-    borderRadius: 12,
+    height: 220,
+    borderRadius: 16,
     borderWidth: 1,
     borderStyle: 'dashed',
-    marginBottom: 20,
+    marginBottom: 24,
     overflow: 'hidden',
+    position: 'relative',
   },
   image: {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
   },
+  imageOverlay: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 30,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   imagePlaceholder: {
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   imagePlaceholderText: {
-    marginTop: 8,
     fontSize: 16,
+    fontWeight: '500',
   },
   formGroup: {
     marginBottom: 16,
@@ -578,21 +660,46 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 8,
   },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  inputIcon: {
+    paddingHorizontal: 12,
+  },
   input: {
+    flex: 1,
     height: 50,
-    borderWidth: 1,
-    borderRadius: 8,
     paddingHorizontal: 12,
     fontSize: 16,
+    borderRadius: 12,
   },
   textArea: {
     height: 100,
     paddingTop: 12,
+    paddingLeft: 12,
   },
   pickerContainer: {
-    borderWidth: 1,
-    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  picker: {
+    flex: 1,
+    height: 50,
   },
   row: {
     flexDirection: 'row',
@@ -602,13 +709,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 50,
-    borderRadius: 25,
+    height: 56,
+    borderRadius: 28,
     marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   submitButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     marginLeft: 8,
   },
@@ -625,7 +737,29 @@ const styles = StyleSheet.create({
   locationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 8,
     paddingHorizontal: 4,
+  },
+  categoriesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  categoryButton: {
+    width: '48%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+  },
+  categoryIconContainer: {
+    marginRight: 10,
+  },
+  categoryText: {
+    fontWeight: '500',
+    fontSize: 14,
   },
 });

@@ -65,7 +65,7 @@ export default function AppSplashScreen() {
         ]}
       >
         <Image 
-          source={require('@/assets/portrait.png')} 
+          source={require('@/assets/Fichier_22.png')} 
           style={styles.fullScreenImage}
           resizeMode="cover"
         />
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: '#00BF12',
   },
   animatedContainer: {
     flex: 1,
