@@ -1,3 +1,21 @@
+/**
+ * ProfileScreen Component
+ * 
+ * Composant principal de la page de profil utilisateur qui gère :
+ * - L'affichage des informations de l'utilisateur
+ * - La liste des emprunts et des prêts
+ * - Les actions sur les prêts (prolongation, retour, etc.)
+ * - L'édition du profil
+ * 
+ * Architecture :
+ * - Utilisation de React Navigation pour la gestion de la navigation
+ * - Intégration avec Supabase pour la persistance des données
+ * - Gestion des thèmes clair/sombre
+ * - Composants réutilisables pour les cartes de prêt
+ * 
+ * @component
+ */
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -22,7 +40,23 @@ import Colors from '@/constants/Colors';
 import { useTheme } from '@/context/ThemeContext';
 import SafeScreenView from '@/components/SafeScreenView';
 
-// Types pour les prêts et emprunts
+/**
+ * Types pour la gestion des prêts et emprunts
+ * 
+ * @typedef {Object} ItemType
+ * @property {string} id - Identifiant unique du prêt
+ * @property {string} nom - Nom de l'objet
+ * @property {string} description - Description de l'objet
+ * @property {string} image_url - URL de l'image de l'objet
+ * @property {string} date_debut - Date de début du prêt
+ * @property {string} date_fin - Date de fin du prêt
+ * @property {('panier'|'en attente'|'approuvé'|'actif'|'demande_retour'|'retourné'|'rejeté')} statut - Statut du prêt
+ * @property {boolean} retard - Indique si le prêt est en retard
+ * @property {boolean} prolongation_demandee - Indique si une prolongation a été demandée
+ * @property {boolean} prolongation_acceptee - Indique si la prolongation a été acceptée
+ * @property {string} [nouvelle_date_fin] - Nouvelle date de fin proposée
+ * @property {Object} utilisateur - Informations sur l'autre partie (prêteur ou emprunteur)
+ */
 type ItemType = {
   id: string;
   nom: string;
@@ -30,7 +64,11 @@ type ItemType = {
   image_url: string;
   date_debut: string;
   date_fin: string;
-  statut: 'en cours' | 'retourné' | 'en attente' | 'rejeté';
+  statut: 'panier' | 'en attente' | 'approuvé' | 'actif' | 'demande_retour' | 'retourné' | 'rejeté';
+  retard: boolean;
+  prolongation_demandee: boolean;
+  prolongation_acceptee: boolean;
+  nouvelle_date_fin?: string;
   utilisateur: {
     nom_complet: string;
     email: string;
@@ -69,44 +107,59 @@ export default function ProfileScreen() {
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
 
-  // Ouvrir le modal avec les détails d'un élément
+  /**
+   * Ouvre le modal avec les détails d'un prêt
+   * @param {ItemType} item - Le prêt à afficher en détail
+   */
   const openDetailsModal = (item: ItemType) => {
     setSelectedItem(item);
     setDetailsModalVisible(true);
   };
 
-  // Fermer le modal
+  /**
+   * Ferme le modal
+   */
   const closeDetailsModal = () => {
     setDetailsModalVisible(false);
     setSelectedItem(null);
   };
 
+  /**
+   * Effect qui recharge les données du profil à chaque fois que l'écran est focus
+   * Utilisation de useFocusEffect pour garantir la mise à jour même en navigation par tab
+   */
   useFocusEffect(
     useCallback(() => {
       console.log('ProfileScreen focused - refreshing data');
       fetchUserProfile();
       return () => {
-        // Cleanup
+        // Cleanup si nécessaire
       };
     }, [])
   );
 
+  /**
+   * Récupère toutes les données du profil utilisateur :
+   * - Informations de base (email, nom)
+   * - Données personnalisées (profil étendu)
+   * - Liste des emprunts
+   * - Liste des prêts
+   */
   async function fetchUserProfile() {
     try {
       setLoading(true);
       
-      // Récupérer l'utilisateur connecté
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // Mettre à jour les informations de base
+        // Mise à jour des informations de base
         setUserInfo({
           email: user.email || '',
           name: user.email?.split('@')[0] || 'Utilisateur',
           createdAt: new Date(user.created_at).toLocaleDateString(),
         });
         
-        // Récupérer les données utilisateur depuis la table personnalisée
+        // Récupération des données utilisateur étendues
         const { data: userData, error: userError } = await supabase
           .from('utilisateurs')
           .select('nom_complet')
@@ -120,7 +173,7 @@ export default function ProfileScreen() {
           }));
         }
         
-        // Charger les emprunts et prêts
+        // Chargement parallèle des emprunts et prêts
         await Promise.all([
           fetchEmprunts(user.id),
           fetchPrets(user.id)
@@ -134,10 +187,19 @@ export default function ProfileScreen() {
     }
   }
   
-  // Récupérer les emprunts de l'utilisateur
+  /**
+   * Récupère la liste des emprunts de l'utilisateur
+   * 
+   * Processus :
+   * 1. Récupère les prêts où l'utilisateur est emprunteur
+   * 2. Récupère les informations des matériels associés
+   * 3. Combine les données pour l'affichage
+   * 
+   * @param {string} userId - ID de l'utilisateur connecté
+   */
   async function fetchEmprunts(userId: string) {
     try {
-      // Récupérer d'abord les prêts (en excluant ceux qui sont dans le panier)
+      // Récupération des prêts (hors panier)
       const { data: pretsData, error: pretsError } = await supabase
         .from('prets')
         .select(`
@@ -152,17 +214,13 @@ export default function ProfileScreen() {
           )
         `)
         .eq('emprunteur_id', userId)
-        .neq('statut', 'cart'); // Exclure les matériels dans le panier
+        .neq('statut', 'panier');
         
-      if (pretsError) {
-        throw pretsError;
-      }
+      if (pretsError) throw pretsError;
       
       if (pretsData && pretsData.length > 0) {
-        // Extraire les IDs de matériels pour les récupérer ensuite
+        // Récupération des informations des matériels
         const materielIds = pretsData.map(item => item.materiel_id);
-        
-        // Récupérer les informations des matériels (avec url_image)
         const { data: materielsData, error: materielsError } = await supabase
           .from('materiels')
           .select('id, nom, description, url_image')
@@ -172,7 +230,7 @@ export default function ProfileScreen() {
           console.error('Erreur récupération des matériels:', materielsError);
         }
         
-        // Créer un mapping des matériels par ID pour un accès rapide
+        // Mapping pour un accès rapide aux données des matériels
         const materielsMap = {};
         if (materielsData) {
           materielsData.forEach(materiel => {
@@ -180,17 +238,20 @@ export default function ProfileScreen() {
           });
         }
         
-        // Transformer les données pour un format plus facile à utiliser
+        // Formatage des données pour l'affichage
         const formattedEmprunts = pretsData.map(item => {
           const materiel = materielsMap[item.materiel_id] || {};
           return {
             id: item.id,
             nom: materiel.nom || 'Matériel #' + item.materiel_id,
             description: materiel.description || '',
-            image_url: materiel.url_image || '', // Récupérer l'URL de l'image
+            image_url: materiel.url_image || '',
             date_debut: new Date(item.date_debut).toLocaleDateString(),
             date_fin: new Date(item.date_fin).toLocaleDateString(),
             statut: item.statut,
+            retard: false,
+            prolongation_demandee: false,
+            prolongation_acceptee: false,
             utilisateur: {
               nom_complet: item.utilisateurs?.nom_complet || 'Utilisateur inconnu',
               email: item.utilisateurs?.email || '',
@@ -207,10 +268,14 @@ export default function ProfileScreen() {
     }
   }
   
-  // Récupérer les prêts de l'utilisateur
+  /**
+   * Récupère la liste des prêts où l'utilisateur est propriétaire
+   * Structure similaire à fetchEmprunts mais avec le point de vue du prêteur
+   * 
+   * @param {string} userId - ID de l'utilisateur connecté
+   */
   async function fetchPrets(userId: string) {
     try {
-      // Récupérer d'abord les prêts (en excluant ceux qui sont dans le panier)
       const { data: pretsData, error: pretsError } = await supabase
         .from('prets')
         .select(`
@@ -225,17 +290,12 @@ export default function ProfileScreen() {
           )
         `)
         .eq('proprietaire_id', userId)
-        .neq('statut', 'cart'); // Exclure les matériels dans le panier
+        .neq('statut', 'panier');
         
-      if (pretsError) {
-        throw pretsError;
-      }
+      if (pretsError) throw pretsError;
       
       if (pretsData && pretsData.length > 0) {
-        // Extraire les IDs de matériels pour les récupérer ensuite
         const materielIds = pretsData.map(item => item.materiel_id);
-        
-        // Récupérer les informations des matériels (avec url_image)
         const { data: materielsData, error: materielsError } = await supabase
           .from('materiels')
           .select('id, nom, description, url_image')
@@ -245,7 +305,6 @@ export default function ProfileScreen() {
           console.error('Erreur récupération des matériels:', materielsError);
         }
         
-        // Créer un mapping des matériels par ID pour un accès rapide
         const materielsMap = {};
         if (materielsData) {
           materielsData.forEach(materiel => {
@@ -253,17 +312,19 @@ export default function ProfileScreen() {
           });
         }
         
-        // Transformer les données pour un format plus facile à utiliser
         const formattedPrets = pretsData.map(item => {
           const materiel = materielsMap[item.materiel_id] || {};
           return {
             id: item.id,
             nom: materiel.nom || 'Matériel #' + item.materiel_id,
             description: materiel.description || '',
-            image_url: materiel.url_image || '', // Récupérer l'URL de l'image
+            image_url: materiel.url_image || '',
             date_debut: new Date(item.date_debut).toLocaleDateString(),
             date_fin: new Date(item.date_fin).toLocaleDateString(),
             statut: item.statut,
+            retard: false,
+            prolongation_demandee: false,
+            prolongation_acceptee: false,
             utilisateur: {
               nom_complet: item.utilisateurs?.nom_complet || 'Utilisateur inconnu',
               email: item.utilisateurs?.email || '',
@@ -280,17 +341,103 @@ export default function ProfileScreen() {
     }
   }
   
-  // Rendu d'un élément de prêt ou d'emprunt
+  /**
+   * Gère le rendu d'un élément de prêt dans la liste
+   * Affiche les informations et les actions disponibles selon le statut
+   * 
+   * @param {Object} props - Props du composant
+   * @param {ItemType} props.item - L'élément à afficher
+   * @returns {React.ReactElement} - Le composant de rendu
+   */
   const renderItem = ({ item }: { item: ItemType }) => {
     const isEmprunt = activeTab === 'emprunts';
+    
+    // Couleurs selon le statut du prêt
     const statusColors = {
-      'en cours': '#4CAF50',
-      'retourné': '#2196F3',
-      'en attente': '#FFC107',
-      'rejeté': '#F44336',
+      'panier': '#9E9E9E',      // Gris
+      'en attente': '#FFC107',  // Jaune
+      'approuvé': '#4CAF50',    // Vert
+      'actif': '#2196F3',       // Bleu
+      'demande_retour': '#FF9800', // Orange
+      'retourné': '#9C27B0',    // Violet
+      'rejeté': '#F44336',      // Rouge
     };
 
-  return (
+    /**
+     * Gère la demande de prolongation d'un prêt
+     * Ajoute 7 jours par défaut à la date de fin actuelle
+     */
+    const handleProlongation = async () => {
+      try {
+        const currentEndDate = new Date(item.date_fin);
+        const newEndDate = new Date(currentEndDate);
+        newEndDate.setDate(newEndDate.getDate() + 7);
+
+        const { error } = await supabase
+          .from('prets')
+          .update({
+            prolongation_demandee: true,
+            nouvelle_date_fin: newEndDate.toISOString()
+          })
+          .eq('id', item.id);
+
+        if (error) throw error;
+
+        Alert.alert('Succès', 'Votre demande de prolongation a été envoyée');
+        fetchUserProfile();
+      } catch (error) {
+        console.error('Erreur:', error);
+        Alert.alert('Erreur', 'Impossible de demander une prolongation');
+      }
+    };
+
+    /**
+     * Gère la demande de retour d'un prêt par l'emprunteur
+     */
+    const handleDemandeRetour = async () => {
+      try {
+        const { error } = await supabase
+          .from('prets')
+          .update({
+            statut: 'demande_retour',
+            date_modification: new Date().toISOString()
+          })
+          .eq('id', item.id);
+
+        if (error) throw error;
+
+        Alert.alert('Succès', 'Votre demande de retour a été envoyée');
+        fetchUserProfile();
+      } catch (error) {
+        console.error('Erreur:', error);
+        Alert.alert('Erreur', 'Impossible de demander le retour');
+      }
+    };
+
+    /**
+     * Gère la confirmation du retour d'un prêt par le propriétaire
+     */
+    const handleConfirmRetour = async () => {
+      try {
+        const { error } = await supabase
+          .from('prets')
+          .update({
+            statut: 'retourné',
+            date_modification: new Date().toISOString()
+          })
+          .eq('id', item.id);
+
+        if (error) throw error;
+
+        Alert.alert('Succès', 'Le retour a été confirmé');
+        fetchUserProfile();
+      } catch (error) {
+        console.error('Erreur:', error);
+        Alert.alert('Erreur', 'Impossible de confirmer le retour');
+      }
+    };
+
+    return (
       <View style={[styles.itemCard, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
         <View style={styles.itemHeader}>
           <View style={styles.itemImageContainer}>
@@ -320,25 +467,70 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.itemFooter}>
-          <View style={[styles.statusBadge, { backgroundColor: statusColors[item.statut] + '20' }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusColors[item.statut] }]} />
-            <Text style={[styles.statusText, { color: statusColors[item.statut] }]}>
-              {item.statut.charAt(0).toUpperCase() + item.statut.slice(1)}
-            </Text>
+          <View style={styles.statusContainer}>
+            <View style={[styles.statusBadge, { backgroundColor: statusColors[item.statut] + '20' }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusColors[item.statut] }]} />
+              <Text style={[styles.statusText, { color: statusColors[item.statut] }]}>
+                {item.statut.charAt(0).toUpperCase() + item.statut.slice(1)}
+              </Text>
+            </View>
+            
+            {item.retard && (
+              <View style={[styles.retardBadge, { backgroundColor: colors.danger + '20' }]}>
+                <Ionicons name="alert-circle" size={16} color={colors.danger} />
+                <Text style={[styles.retardText, { color: colors.danger }]}>En retard</Text>
+              </View>
+            )}
           </View>
-          
-          <TouchableOpacity 
-            style={[styles.detailsButton, { borderColor: colors.border }]}
-            onPress={() => openDetailsModal(item)}
-          >
-            <Text style={[styles.detailsButtonText, { color: colors.primary }]}>Détails</Text>
-          </TouchableOpacity>
+
+          <View style={styles.actionButtons}>
+            {item.statut === 'actif' && isEmprunt && !item.prolongation_demandee && (
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.primary }]}
+                onPress={handleProlongation}
+              >
+                <Text style={styles.actionButtonText}>Prolonger</Text>
+              </TouchableOpacity>
+            )}
+
+            {item.statut === 'actif' && isEmprunt && !item.prolongation_demandee && (
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.primary }]}
+                onPress={handleDemandeRetour}
+              >
+                <Text style={styles.actionButtonText}>Demander le retour</Text>
+              </TouchableOpacity>
+            )}
+
+            {item.statut === 'demande_retour' && !isEmprunt && (
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.success }]}
+                onPress={handleConfirmRetour}
+              >
+                <Text style={styles.actionButtonText}>Confirmer le retour</Text>
+              </TouchableOpacity>
+            )}
+
+            {item.prolongation_demandee && !isEmprunt && (
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.success }]}
+                onPress={() => handleAcceptProlongation(item.id)}
+              >
+                <Text style={styles.actionButtonText}>Accepter prolongation</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     );
   };
   
-  // Rendu pour aucun élément
+  /**
+   * Rendu pour l'état vide (aucun prêt/emprunt)
+   * Affiche un message approprié et un bouton d'action selon le contexte
+   * 
+   * @returns {React.ReactElement} Composant pour l'état vide
+   */
   const renderEmptyList = () => (
     <View style={styles.emptyContainer}>
       <Ionicons 
@@ -350,7 +542,7 @@ export default function ProfileScreen() {
       <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
         {activeTab === 'emprunts' 
           ? "Vous n'avez pas encore d'emprunts."
-          : "Vous n'avez pas encore prêté d'objets."}
+          : "Vous n'avez pas pas encore prêté d'objets."}
       </Text>
       <TouchableOpacity 
         style={[styles.emptyButton, { backgroundColor: colors.primary }]}
@@ -359,11 +551,16 @@ export default function ProfileScreen() {
         <Text style={styles.emptyButtonText}>
           {activeTab === 'emprunts' ? 'Emprunter maintenant' : 'Mettre en prêt'}
         </Text>
-          </TouchableOpacity>
+      </TouchableOpacity>
     </View>
   );
 
-  // Afficher le formulaire d'édition
+  /**
+   * Rendu du formulaire d'édition du profil
+   * Permet à l'utilisateur de modifier ses informations personnelles
+   * 
+   * @returns {React.ReactElement} Formulaire d'édition du profil
+   */
   if (isEditing) {
     return (
       <SafeScreenView>
@@ -375,21 +572,29 @@ export default function ProfileScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 20 }}
           >
+            {/* En-tête du formulaire */}
             <View style={[styles.editHeader, { backgroundColor: colors.card }]}>
               <View style={styles.avatarEditContainer}>
                 <View style={[styles.avatarEdit, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.avatarEditText}>{profileData.fullName.charAt(0).toUpperCase()}</Text>
-                  <TouchableOpacity style={[styles.editAvatarButton, { backgroundColor: colors.background }]}>
+                  <Text style={styles.avatarEditText}>
+                    {profileData.fullName.charAt(0).toUpperCase()}
+                  </Text>
+                  <TouchableOpacity 
+                    style={[styles.editAvatarButton, { backgroundColor: colors.background }]}
+                  >
                     <Ionicons name="camera" size={18} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <Text style={[styles.headerTitle, { color: colors.text }]}>Modifier votre profil</Text>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>
+                Modifier votre profil
+              </Text>
               <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
                 Personnalisez vos informations personnelles
               </Text>
             </View>
             
+            {/* Affichage du loader pendant le chargement */}
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
@@ -399,7 +604,9 @@ export default function ProfileScreen() {
               </View>
             ) : (
               <View style={styles.formContainer}>
+                {/* Carte principale du formulaire */}
                 <View style={[styles.formCard, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
+                  {/* Champ : Nom complet */}
                   <View style={styles.inputGroup}>
                     <Text style={[styles.inputLabel, { color: colors.text }]}>
                       <Ionicons name="person" size={16} color={colors.primary} style={styles.inputIcon} /> 
@@ -418,6 +625,7 @@ export default function ProfileScreen() {
                     />
                   </View>
                   
+                  {/* Champ : Biographie */}
                   <View style={styles.inputGroup}>
                     <Text style={[styles.inputLabel, { color: colors.text }]}>
                       <Ionicons name="book" size={16} color={colors.primary} style={styles.inputIcon} /> 
@@ -439,6 +647,7 @@ export default function ProfileScreen() {
                     />
                   </View>
                   
+                  {/* Champ : Localisation */}
                   <View style={styles.inputGroup}>
                     <Text style={[styles.inputLabel, { color: colors.text }]}>
                       <Ionicons name="location" size={16} color={colors.primary} style={styles.inputIcon} /> 
@@ -457,6 +666,7 @@ export default function ProfileScreen() {
                     />
                   </View>
                   
+                  {/* Champ : Téléphone */}
                   <View style={styles.inputGroup}>
                     <Text style={[styles.inputLabel, { color: colors.text }]}>
                       <Ionicons name="call" size={16} color={colors.primary} style={styles.inputIcon} /> 
@@ -477,6 +687,7 @@ export default function ProfileScreen() {
                   </View>
                 </View>
                 
+                {/* Note d'information */}
                 <View style={styles.noteCard}>
                   <Ionicons name="information-circle" size={20} color={colors.primary} />
                   <Text style={[styles.noteText, { color: colors.textSecondary }]}>
@@ -484,6 +695,7 @@ export default function ProfileScreen() {
                   </Text>
                 </View>
                 
+                {/* Boutons d'action */}
                 <View style={styles.actions}>
                   <TouchableOpacity 
                     style={[styles.buttonCancel, { borderColor: colors.border }]}
@@ -492,8 +704,8 @@ export default function ProfileScreen() {
                   >
                     <Ionicons name="close" size={18} color={colors.text} style={styles.buttonIcon} />
                     <Text style={[styles.buttonCancelText, { color: colors.text }]}>Annuler</Text>
-          </TouchableOpacity>
-          
+                  </TouchableOpacity>
+                  
                   <TouchableOpacity 
                     style={[styles.buttonSave, { backgroundColor: colors.primary }]}
                     onPress={handleSaveProfile}
@@ -512,7 +724,12 @@ export default function ProfileScreen() {
     );
   }
 
-  // Affichage normal du profil
+  /**
+   * Rendu principal du profil
+   * Affiche les informations de l'utilisateur et la liste des prêts/emprunts
+   * 
+   * @returns {React.ReactElement} Vue principale du profil
+   */
   return (
     <SafeScreenView>
       {loading ? (
@@ -524,12 +741,16 @@ export default function ProfileScreen() {
         </View>
       ) : (
         <View style={styles.container}>
-          {/* Header */}
+          {/* En-tête du profil */}
           <View style={[styles.header, { backgroundColor: colors.card }]}>
             <View style={styles.headerTop}>
               <View style={styles.headerTitleContainer}>
-                <Text style={[styles.headerGreeting, { color: colors.textSecondary }]}>Bonjour,</Text>
-                <Text style={[styles.headerName, { color: colors.text }]}>{userInfo.name}</Text>
+                <Text style={[styles.headerGreeting, { color: colors.textSecondary }]}>
+                  Bonjour,
+                </Text>
+                <Text style={[styles.headerName, { color: colors.text }]}>
+                  {userInfo.name}
+                </Text>
               </View>
               <TouchableOpacity 
                 style={[styles.settingsButton, { backgroundColor: colors.background }]}
@@ -539,19 +760,28 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Statistiques utilisateur */}
             <View style={styles.userStatsContainer}>
               <View style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: colors.text }]}>{emprunts.length}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Emprunts</Text>
+                <Text style={[styles.statNumber, { color: colors.text }]}>
+                  {emprunts.length}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+                  Emprunts
+                </Text>
               </View>
               <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
               <View style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: colors.text }]}>{prets.length}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Prêts</Text>
+                <Text style={[styles.statNumber, { color: colors.text }]}>
+                  {prets.length}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+                  Prêts
+                </Text>
               </View>
             </View>
             
-            {/* Tabs */}
+            {/* Onglets de navigation */}
             <View style={styles.tabContainer}>
               <TouchableOpacity 
                 style={[
@@ -588,7 +818,7 @@ export default function ProfileScreen() {
             </View>
           </View>
           
-          {/* Content */}
+          {/* Liste des prêts/emprunts */}
           <FlatList
             data={activeTab === 'emprunts' ? emprunts : prets}
             renderItem={renderItem}
@@ -656,10 +886,12 @@ export default function ProfileScreen() {
                       height: 16, 
                       borderRadius: 8, 
                       backgroundColor: {
-                        'en cours': '#4CAF50',
-                        'retourné': '#2196F3',
-                        'en attente': '#FFC107',
-                        'rejeté': '#F44336',
+                        'panier': '#9E9E9E',      // Gris
+                        'en attente': '#FFC107',  // Jaune
+                        'approuvé': '#4CAF50',    // Vert
+                        'actif': '#2196F3',       // Bleu
+                        'retourné': '#9C27B0',    // Violet
+                        'rejeté': '#F44336',      // Rouge
                       }[selectedItem.statut],
                       justifyContent: 'center',
                       alignItems: 'center'
@@ -684,7 +916,7 @@ export default function ProfileScreen() {
                   </View>
                 </View>
                 
-                {selectedItem.statut === 'en cours' && (
+                {selectedItem.statut === 'actif' && (
                   <TouchableOpacity 
                     style={[styles.modalActionButton, { backgroundColor: colors.primary }]}
                   >
@@ -702,7 +934,17 @@ export default function ProfileScreen() {
   );
 }
 
+/**
+ * Styles pour le composant ProfileScreen
+ * Organisation en sections logiques :
+ * - Container et états de chargement
+ * - En-tête et navigation
+ * - Cartes de prêt et d'emprunt
+ * - Formulaire d'édition
+ * - Modal de détails
+ */
 const styles = StyleSheet.create({
+  // Container principal et états de chargement
   container: {
     flex: 1,
   },
@@ -715,6 +957,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 14,
   },
+
+  // En-tête du profil et navigation
   header: {
     paddingTop: 15,
     paddingHorizontal: 20,
@@ -752,6 +996,8 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+
+  // Statistiques utilisateur
   userStatsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -775,6 +1021,8 @@ const styles = StyleSheet.create({
     height: '70%',
     alignSelf: 'center',
   },
+
+  // Navigation par onglets
   tabContainer: {
     flexDirection: 'row',
     marginBottom: 2,
@@ -791,6 +1039,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+
+  // Liste des prêts/emprunts
   listContainer: {
     paddingHorizontal: 15,
     paddingTop: 20,
@@ -847,6 +1097,8 @@ const styles = StyleSheet.create({
   dateLabel: {
     fontSize: 12,
   },
+
+  // Pied de carte avec statut et actions
   itemFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -854,6 +1106,11 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
   statusBadge: {
     flexDirection: 'row',
@@ -872,16 +1129,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  detailsButton: {
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  actionButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    borderWidth: 1,
+    marginRight: 8,
+    marginBottom: 8,
   },
-  detailsButtonText: {
-    fontSize: 12,
+  actionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '600',
   },
+
+  // État vide (pas de prêts/emprunts)
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -902,7 +1169,8 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
-  // Styles améliorés pour le formulaire d'édition
+
+  // Formulaire d'édition du profil
   editHeader: {
     alignItems: 'center',
     marginTop: 10,
@@ -986,6 +1254,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 120,
   },
+
+  // Note d'information et boutons d'action
   noteCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1034,8 +1304,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: 'white',
   },
-  
-  // Styles pour le modal (identiques à ItemCard)
+
+  // Modal de détails
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -1114,5 +1384,18 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     marginRight: 8,
+  },
+  retardBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  retardText: {
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

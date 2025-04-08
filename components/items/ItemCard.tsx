@@ -18,6 +18,9 @@ interface ItemProps {
     proprietaire_id: string;
     categorie_id: string;
     proprietaire_nom?: string;
+    quantite_disponible: number;
+    quantite_totale: number;
+    prochaine_disponibilite?: string;
     [key: string]: any;
   };
   currentUserId?: string | null;
@@ -66,10 +69,12 @@ const ItemCard: React.FC<ItemProps> = ({ item, currentUserId }) => {
   
   async function addToCart(itemId: string) {
     setLoading(true);
+    console.log('Début addToCart pour itemId:', itemId);
     
     try {
       // Récupérer l'utilisateur actuel
       const { data: { user } } = await supabase.auth.getUser();
+      console.log('Utilisateur connecté:', user?.id);
       
       if (!user) {
         Alert.alert('Erreur', 'Vous devez être connecté pour ajouter au panier');
@@ -82,8 +87,10 @@ const ItemCard: React.FC<ItemProps> = ({ item, currentUserId }) => {
         .select('id, date_debut, date_fin, frais_location')
         .eq('emprunteur_id', user.id)
         .eq('materiel_id', itemId)
-        .eq('statut', 'cart')
+        .eq('statut', 'panier')
         .single();
+      
+      console.log('Vérification panier:', { existingItem, checkError });
       
       if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = not found
         console.error('Erreur lors de la vérification du panier:', checkError);
@@ -97,10 +104,25 @@ const ItemCard: React.FC<ItemProps> = ({ item, currentUserId }) => {
         .select('*')
         .eq('id', itemId)
         .single();
+      
+      console.log('Détails matériel:', { materiel, materielError });
         
       if (materielError) {
         console.error('Erreur lors de la récupération du matériel:', materielError);
         Alert.alert('Erreur', 'Impossible de récupérer les détails du matériel');
+        return;
+      }
+
+      // Vérifier la disponibilité
+      if (materiel.quantite_disponible <= 0) {
+        if (materiel.prochaine_disponibilite) {
+          Alert.alert(
+            'Non disponible',
+            `Cet article sera disponible à partir du ${new Date(materiel.prochaine_disponibilite).toLocaleDateString()}`
+          );
+        } else {
+          Alert.alert('Non disponible', 'Cet article n\'est plus disponible pour le moment');
+        }
         return;
       }
       
@@ -112,6 +134,7 @@ const ItemCard: React.FC<ItemProps> = ({ item, currentUserId }) => {
       let result;
       
       if (existingItem) {
+        console.log('Mise à jour article existant dans le panier');
         // Mettre à jour la durée si l'article existe déjà dans le panier
         const newEndDate = new Date(existingItem.date_fin);
         newEndDate.setDate(newEndDate.getDate() + 1); // Ajouter un jour
@@ -128,7 +151,8 @@ const ItemCard: React.FC<ItemProps> = ({ item, currentUserId }) => {
           })
           .eq('id', existingItem.id);
       } else {
-        // Ajouter un nouvel article au panier (créer un prêt avec statut 'cart')
+        console.log('Ajout nouvel article au panier');
+        // Ajouter un nouvel article au panier
         result = await supabase
           .from('prets')
           .insert({
@@ -137,11 +161,13 @@ const ItemCard: React.FC<ItemProps> = ({ item, currentUserId }) => {
             proprietaire_id: materiel.proprietaire_id,
             date_debut: today.toISOString(),
             date_fin: endDate.toISOString(),
-            statut: 'cart',
+            statut: 'panier',
             frais_location: 3 * (materiel.prix || 0), // 3 jours par défaut
             caution_payee: materiel.caution || 0
           });
       }
+      
+      console.log('Résultat opération:', result);
       
       if (result.error) {
         console.error('Erreur lors de l\'ajout au panier:', result.error);
@@ -264,6 +290,22 @@ const ItemCard: React.FC<ItemProps> = ({ item, currentUserId }) => {
                   <Ionicons name="pricetag-outline" size={16} color={colors.primary} />
                   <Text style={[styles.modalInfoText, { color: colors.text }]}>{item.prix}€/jour</Text>
                 </View>
+                
+                <View style={styles.modalInfoItem}>
+                  <Ionicons name="cube-outline" size={16} color={colors.primary} />
+                  <Text style={[styles.modalInfoText, { color: colors.text }]}>
+                    {item.quantite_disponible} sur {item.quantite_totale} disponible{item.quantite_totale > 1 ? 's' : ''}
+                  </Text>
+                </View>
+                
+                {item.prochaine_disponibilite && item.quantite_disponible === 0 && (
+                  <View style={styles.modalInfoItem}>
+                    <Ionicons name="time-outline" size={16} color={colors.primary} />
+                    <Text style={[styles.modalInfoText, { color: colors.text }]}>
+                      Prochain disponible le {new Date(item.prochaine_disponibilite).toLocaleDateString()}
+                    </Text>
+                  </View>
+                )}
                 
                 {item.caution && (
                   <View style={styles.modalInfoItem}>

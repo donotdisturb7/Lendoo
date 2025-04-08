@@ -55,13 +55,15 @@ export default function CartScreen() {
   
   async function fetchCartItems() {
     setLoading(true);
+    console.log('Début fetchCartItems');
     
     try {
       // Récupérer l'utilisateur actuel
       const { data: { user } } = await supabase.auth.getUser();
+      console.log('Utilisateur connecté:', user?.id);
       
       if (user) {
-        // Récupérer les éléments du panier (prêts avec statut 'cart')
+        // Récupérer les éléments du panier (prêts avec statut 'panier')
         const { data, error } = await supabase
           .from('prets')
           .select(`
@@ -82,7 +84,9 @@ export default function CartScreen() {
             materiel:materiels(id, nom, description, prix, caution, url_image, localisation)
           `)
           .eq('emprunteur_id', user.id)
-          .eq('statut', 'cart');
+          .eq('statut', 'panier');
+          
+        console.log('Résultat requête panier:', { data, error });
           
         if (error) {
           console.error('Erreur lors de la récupération du panier:', error);
@@ -94,12 +98,16 @@ export default function CartScreen() {
             materiel: Array.isArray(item.materiel) ? item.materiel[0] : item.materiel
           })) as CartItem[];
           
+          console.log('Données typées:', typedData);
+          
           setCartItems(typedData);
           
           // Calculer le prix total
           const total = typedData.reduce((sum, item) => {
             return sum + (item.frais_location || 0);
           }, 0);
+          
+          console.log('Prix total calculé:', total);
           
           setTotalPrice(total);
         }
@@ -208,38 +216,61 @@ export default function CartScreen() {
       return;
     }
     
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        // Mettre à jour le statut des prêts de 'cart' à 'pending'
-        const cartItemIds = cartItems.map(item => item.id);
-        
-        const { error: updateError } = await supabase
-          .from('prets')
-          .update({ statut: 'pending' })
-          .in('id', cartItemIds);
-          
-        if (updateError) {
-          console.error('Erreur lors de la validation de la commande:', updateError);
-          Alert.alert('Erreur', 'Impossible de finaliser votre commande');
-          return;
+    // Demander confirmation avant de procéder
+    Alert.alert(
+      'Confirmer la demande',
+      'Voulez-vous vraiment soumettre cette demande de location ? Le propriétaire devra l\'approuver.',
+      [
+        {
+          text: 'Annuler',
+          style: 'cancel'
+        },
+        {
+          text: 'Confirmer',
+          style: 'default',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const { data: { user } } = await supabase.auth.getUser();
+              
+              if (user) {
+                // Mettre à jour le statut des prêts de 'panier' à 'en attente'
+                const cartItemIds = cartItems.map(item => item.id);
+                
+                const { error: updateError } = await supabase
+                  .from('prets')
+                  .update({ 
+                    statut: 'en attente',
+                    date_modification: new Date().toISOString()
+                  })
+                  .in('id', cartItemIds);
+                  
+                if (updateError) {
+                  console.error('Erreur lors de la validation de la commande:', updateError);
+                  Alert.alert('Erreur', 'Impossible de finaliser votre commande');
+                  return;
+                }
+                
+                // Mettre à jour l'état local
+                setCartItems([]);
+                setTotalPrice(0);
+                
+                Alert.alert(
+                  'Demande envoyée', 
+                  'Votre demande de location a été envoyée aux propriétaires pour validation. Vous serez notifié de leur réponse.',
+                  [{ text: 'OK' }]
+                );
+              }
+            } catch (error) {
+              console.error('Erreur:', error);
+              Alert.alert('Erreur', 'Une erreur est survenue lors de la validation');
+            } finally {
+              setLoading(false);
+            }
+          }
         }
-        
-        // Mettre à jour l'état local
-        setCartItems([]);
-        setTotalPrice(0);
-        
-        Alert.alert(
-          'Commande confirmée', 
-          'Votre demande de location a été enregistrée avec succès!',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
-      console.error('Erreur:', error);
-      Alert.alert('Erreur', 'Une erreur est survenue lors de la validation');
-    }
+      ]
+    );
   }
   
   // Calculer le nombre de jours entre deux dates

@@ -10,6 +10,13 @@ ALTER TABLE public.prets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.avis ENABLE ROW LEVEL SECURITY;
 
+-- Politique pour le stockage
+CREATE POLICY "Tout le monde peut télécharger des images" ON storage.objects
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Tout le monde peut voir les images" ON storage.objects
+  FOR SELECT USING (true);
+
 -- Politique pour utilisateurs: un utilisateur peut voir son propre profil et les admins peuvent voir tous les profils
 CREATE POLICY utilisateurs_select ON public.utilisateurs 
   FOR SELECT USING (auth.uid() = id OR EXISTS (SELECT 1 FROM public.utilisateurs WHERE id = auth.uid() AND 'admin' = ANY(roles)));
@@ -52,7 +59,7 @@ CREATE POLICY prets_insert ON public.prets
   FOR INSERT WITH CHECK (auth.uid() = emprunteur_id);
 
 CREATE POLICY prets_update_emprunteur ON public.prets 
-  FOR UPDATE USING (auth.uid() = emprunteur_id AND statut IN ('cart', 'pending'));
+  FOR UPDATE USING (auth.uid() = emprunteur_id AND statut IN ('panier', 'en attente'));
 
 CREATE POLICY prets_update_proprietaire ON public.prets 
   FOR UPDATE USING (auth.uid() = proprietaire_id);

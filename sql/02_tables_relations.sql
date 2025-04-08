@@ -1,7 +1,25 @@
 -- 02_tables_relations.sql
 -- Tables avec relations plus complexes
 
--- 4. Table des matériels disponibles à la location
+/**
+ * Tables avec relations complexes pour l'application de prêt d'objets
+ * 
+ * Architecture de la base de données :
+ * - Utilisation d'UUID pour les clés primaires pour la scalabilité et la sécurité
+ * - Contraintes de clés étrangères avec ON DELETE appropriés
+ * - Timestamps automatiques pour le suivi des modifications
+ * - Contraintes CHECK pour la validation des données
+ */
+
+/**
+ * Table des matériels disponibles à la location
+ * 
+ * Points clés :
+ * - Gestion de la disponibilité avec un booléen simple
+ * - Prix et caution avec précision décimale (10,2) pour éviter les erreurs d'arrondi
+ * - Durées min/max en jours pour contrôler les périodes de prêt
+ * - Localisation pour futur système de recherche géographique
+ */
 CREATE TABLE IF NOT EXISTS public.materiels (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   proprietaire_id UUID NOT NULL REFERENCES public.utilisateurs(id) ON DELETE CASCADE,
@@ -16,12 +34,30 @@ CREATE TABLE IF NOT EXISTS public.materiels (
   conditions_location TEXT,
   duree_min_jours SMALLINT DEFAULT 1,
   duree_max_jours SMALLINT DEFAULT 30,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(10, 8),
   date_creation TIMESTAMPTZ DEFAULT now(),
   date_modification TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT prix_positif CHECK (prix >= 0)
 );
 
--- 5. Table des prêts et du panier
+/**
+ * Table des prêts et du panier
+ * 
+ * Workflow des statuts :
+ * panier -> en attente -> approuvé -> actif -> demande_retour -> retourné
+ *                      -> rejeté (fin)
+ * 
+ * Gestion des prolongations :
+ * - prolongation_demandee : L'emprunteur demande une extension
+ * - prolongation_acceptee : Le propriétaire accepte
+ * - nouvelle_date_fin : Nouvelle date proposée
+ * 
+ * Sécurité :
+ * - Double référence propriétaire/emprunteur pour éviter les confusions
+ * - Contrainte sur les dates pour éviter les incohérences
+ * - Suivi des cautions payées/rendues
+ */
 CREATE TABLE IF NOT EXISTS public.prets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   materiel_id UUID NOT NULL REFERENCES public.materiels(id) ON DELETE CASCADE,
@@ -30,18 +66,31 @@ CREATE TABLE IF NOT EXISTS public.prets (
   date_debut TIMESTAMPTZ NOT NULL,
   date_fin TIMESTAMPTZ NOT NULL,
   date_retour TIMESTAMPTZ,
-  statut TEXT NOT NULL DEFAULT 'cart',
+  statut TEXT NOT NULL DEFAULT 'panier',
   frais_location DECIMAL(10, 2) NOT NULL CHECK (frais_location >= 0),
   caution_payee DECIMAL(10, 2) DEFAULT 0,
   caution_rendue BOOLEAN DEFAULT false,
   notes TEXT,
   date_creation TIMESTAMPTZ DEFAULT now(),
   date_modification TIMESTAMPTZ DEFAULT now(),
+  prolongation_demandee BOOLEAN DEFAULT FALSE,
+  prolongation_acceptee BOOLEAN DEFAULT FALSE,
+  nouvelle_date_fin TIMESTAMPTZ,
+  retard BOOLEAN DEFAULT FALSE,
   CONSTRAINT dates_coherentes CHECK (date_fin >= date_debut),
-  CONSTRAINT statut_valide CHECK (statut IN ('cart', 'pending', 'approved', 'active', 'returned', 'cancelled'))
+  CONSTRAINT statut_valide CHECK (statut IN ('panier', 'en attente', 'approuvé', 'actif', 'demande_retour', 'retourné', 'rejeté'))
 );
 
--- 6. Table de notifications pour informer les utilisateurs des changements
+/**
+ * Table des notifications
+ * 
+ * Système de notifications in-app pour :
+ * - Nouvelles demandes de prêt
+ * - Changements de statut
+ * - Demandes de prolongation
+ * - Retards
+ * - Messages système
+ */
 CREATE TABLE IF NOT EXISTS public.notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   utilisateur_id UUID NOT NULL REFERENCES public.utilisateurs(id) ON DELETE CASCADE,
@@ -53,7 +102,15 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   date_creation TIMESTAMPTZ DEFAULT now()
 );
 
--- 7. Table pour les avis et les évaluations
+/**
+ * Table des avis et évaluations
+ * 
+ * Système de réputation :
+ * - Note de 1 à 5 étoiles
+ * - Un seul avis par prêt et par personne
+ * - Contrainte unique pour éviter les doublons
+ * - Possibilité d'évaluer le prêteur et l'emprunteur
+ */
 CREATE TABLE IF NOT EXISTS public.avis (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   pret_id UUID NOT NULL REFERENCES public.prets(id) ON DELETE CASCADE,

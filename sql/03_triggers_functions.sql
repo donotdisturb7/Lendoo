@@ -65,7 +65,7 @@ EXECUTE FUNCTION update_materiel_disponibilite();
 CREATE OR REPLACE FUNCTION create_pret_notification()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.statut = 'approved' AND OLD.statut = 'pending' THEN
+  IF NEW.statut = 'approuvé' AND OLD.statut = 'en attente' THEN
     -- Notifier l'emprunteur
     INSERT INTO public.notifications (utilisateur_id, titre, message, type, lien)
     VALUES (
@@ -75,7 +75,7 @@ BEGIN
       'success',
       '/pret/' || NEW.id
     );
-  ELSIF NEW.statut = 'cancelled' AND OLD.statut != 'cancelled' THEN
+  ELSIF NEW.statut = 'annulé' AND OLD.statut != 'annulé' THEN
     -- Notifier selon qui a annulé
     IF auth.uid() = NEW.proprietaire_id THEN
       -- Le propriétaire a annulé
